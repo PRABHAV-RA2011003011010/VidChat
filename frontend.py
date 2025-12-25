@@ -1,10 +1,17 @@
 import streamlit as st
 from backend import chatbot
 from langchain_core.messages import HumanMessage, AIMessage
+from urllib.parse import urlparse, parse_qs
 import uuid
 
 
 # **************************************** Utility Functions ********************************
+
+def YTVideo_ID_generator(video_url):
+    parsed = urlparse(video_url)
+    video_id = parse_qs(parsed.query).get("v", [None])[0]
+    return(video_id)
+    
 
 def generate_thread_id():
     thread_id = uuid.uuid4()
@@ -41,6 +48,30 @@ add_thread(st.session_state['thread_id'])
 
 # **************************************** Frontend Code and Logic ******************************
 
+top_container = st.container()
+
+with top_container:
+    left, center, right = st.columns([1, 2, 1])
+
+    with center:
+        st.subheader("🧠 Ask something")
+
+        video_url = st.text_area(
+            "Give your YT_Video_Link",
+            placeholder="Type your message here...",
+            height=120
+        )
+
+        send_clicked = st.button("Send", use_container_width=True)
+
+        if send_clicked and video_url:
+            video_id = YTVideo_ID_generator(video_url)
+            if video_id:
+                st.success(f"Video ID: {video_id}")
+            else:
+                st.error("Invalid YouTube URL")
+                
+        
 st.sidebar.title('VidChat Chats')
 
 if st.sidebar.button('New Chat'):
