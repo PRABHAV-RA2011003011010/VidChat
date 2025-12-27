@@ -1,9 +1,10 @@
 import streamlit as st
-from backend import chatbot
 from langchain_core.messages import HumanMessage, AIMessage
 from urllib.parse import urlparse, parse_qs
 import uuid
 
+from backend import chatbot
+from backend import fetch_video_transcript
 
 # **************************************** Utility Functions ********************************
 
@@ -21,6 +22,7 @@ def reset_chat():
     thread_id = generate_thread_id()
     st.session_state['thread_id'] = thread_id
     add_thread(thread_id)
+    st.session_state['video_url'] = ""
     st.session_state['message_history'] = []
 
 def add_thread(thread_id):
@@ -43,6 +45,8 @@ if 'thread_id' not in st.session_state:
 
 if 'chat_threads' not in st.session_state:
     st.session_state['chat_threads'] = []
+
+
     
 add_thread(st.session_state['thread_id'])
 
@@ -67,7 +71,9 @@ with top_container:
         if send_clicked and video_url:
             video_id = YTVideo_ID_generator(video_url)
             if video_id:
-                st.success(f"Video ID: {video_id}")
+                fetch_video_transcript(video_id)
+                st.success(f"Video {video_id} Loaded")
+                
             else:
                 st.error("Invalid YouTube URL")
                 
