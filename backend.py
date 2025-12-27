@@ -24,32 +24,55 @@ client = InferenceClient()
 MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct"
 embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-embedding_dim = 384
-index = faiss.IndexFlatL2(embedding_dim)
-
+# embedding_dim = 384
+# index = faiss.IndexFlatL2(embedding_dim)
+BASE_FAISS_PATH = "faiss_store"
+os.makedirs(BASE_FAISS_PATH, exist_ok=True)
 # 4️⃣ Empty docstore
-docstore = InMemoryDocstore({})
+# docstore = InMemoryDocstore({})
 
-# 5️⃣ Create FAISS vector store
-vector_store = FAISS(
-    embedding_function=embed_model,
-    index=index,
-    docstore=docstore,
-    index_to_docstore_id={}
-)
+# # 5️⃣ Create FAISS vector store
+# vector_store = FAISS(
+#     embedding_function=embed_model,
+#     index=index,
+#     docstore=docstore,
+#     index_to_docstore_id={}
+# )
 
+def get_vector_store(chat_id: str) -> FAISS:
+    chat_path = os.path.join(BASE_FAISS_PATH, chat_id)
+
+    if os.path.exists(chat_path):
+        return FAISS.load_local(
+            chat_path,
+            embed_model,
+            allow_dangerous_deserialization=True
+        )
+
+    embedding_dim = len(embed_model.embed_query("test"))
+    index = faiss.IndexFlatL2(embedding_dim)
+    docstore = InMemoryDocstore({})
+
+    return FAISS(
+        embedding_function=embed_model,
+        index=index,
+        docstore=docstore,
+        index_to_docstore_id={}
+    )
 
 class ChatState(TypedDict):
-
+    chat_id: str
     messages: Annotated[list[BaseMessage], add_messages]
     context: Optional[str]
 
 def route_after_start(state: ChatState):
+    vector_store = get_vector_store(state["chat_id"])
     if vector_store.index.ntotal > 0:
         return "retrieval_node"
     return "chat_node"
 
 def retrieval_node(state: ChatState):
+    vector_store = get_vector_store(state["chat_id"])
     messages = state["messages"]
 
     # latest user query
@@ -129,8 +152,9 @@ chatbot = graph.compile(checkpointer = MemorySaver())
 
 
 
-def fetch_video_transcript(video_id: str) -> str:
+def fetch_video_transcript(video_id: str, chat_id: str) -> str:
     
+    vector_store = get_vector_store(chat_id)
     ytt_api = YouTubeTranscriptApi()
     fetched_snippets = ytt_api.fetch(video_id)
 
@@ -144,6 +168,8 @@ def fetch_video_transcript(video_id: str) -> str:
     chunks = splitter.create_documents([transcript])
 
     vector_store.add_documents(chunks)
+    save_path = os.path.join(BASE_FAISS_PATH, chat_id)
+    vector_store.save_local(save_path)
     
-    return transcript
+    return 
 

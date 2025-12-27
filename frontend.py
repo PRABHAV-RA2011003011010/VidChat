@@ -71,7 +71,7 @@ with top_container:
         if send_clicked and video_url:
             video_id = YTVideo_ID_generator(video_url)
             if video_id:
-                fetch_video_transcript(video_id)
+                fetch_video_transcript(video_id, str(st.session_state['thread_id']))
                 st.success(f"Video {video_id} Loaded")
                 
             else:
@@ -129,7 +129,10 @@ if user_input:
         
         ai_message = st.write_stream(
             message_chunk.content for message_chunk, metadata in chatbot.stream(
-                {'messages': [HumanMessage(content=user_input)]},
+                {
+                    'chat_id': str(st.session_state['thread_id']),
+                    'messages': [HumanMessage(content=user_input)]
+                },
                 config= CONFIG,
                 stream_mode= 'messages'
             )
