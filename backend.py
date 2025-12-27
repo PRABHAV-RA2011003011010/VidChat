@@ -15,7 +15,8 @@ from langchain_community.vectorstores import FAISS
 import faiss
 from langchain_huggingface import HuggingFaceEmbeddings
 from typing import Optional
-from langchain.docstore import InMemoryDocstore
+from langchain_community.docstore.in_memory import InMemoryDocstore
+
 
 load_dotenv()
 HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
@@ -30,7 +31,12 @@ index = faiss.IndexFlatL2(embedding_dim)
 docstore = InMemoryDocstore({})
 
 # 5️⃣ Create FAISS vector store
-vector_store = FAISS(embedding_function=embed_model, index=index, docstore=docstore)
+vector_store = FAISS(
+    embedding_function=embed_model,
+    index=index,
+    docstore=docstore,
+    index_to_docstore_id={}
+)
 
 
 class ChatState(TypedDict):
