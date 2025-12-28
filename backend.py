@@ -24,20 +24,10 @@ client = InferenceClient()
 MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct"
 embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-# embedding_dim = 384
-# index = faiss.IndexFlatL2(embedding_dim)
+
 BASE_FAISS_PATH = "faiss_store"
 os.makedirs(BASE_FAISS_PATH, exist_ok=True)
-# 4️⃣ Empty docstore
-# docstore = InMemoryDocstore({})
 
-# # 5️⃣ Create FAISS vector store
-# vector_store = FAISS(
-#     embedding_function=embed_model,
-#     index=index,
-#     docstore=docstore,
-#     index_to_docstore_id={}
-# )
 
 def get_vector_store(chat_id: str) -> FAISS:
     chat_path = os.path.join(BASE_FAISS_PATH, chat_id)

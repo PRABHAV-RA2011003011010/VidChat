@@ -2,6 +2,7 @@ import streamlit as st
 from langchain_core.messages import HumanMessage, AIMessage
 from urllib.parse import urlparse, parse_qs
 import uuid
+from datetime import datetime
 
 from backend import chatbot
 from backend import fetch_video_transcript
@@ -22,7 +23,7 @@ def reset_chat():
     thread_id = generate_thread_id()
     st.session_state['thread_id'] = thread_id
     add_thread(thread_id)
-    st.session_state['video_url'] = ""
+    st.session_state.pop("video_url", None)
     st.session_state['message_history'] = []
 
 def add_thread(thread_id):
@@ -33,6 +34,19 @@ def load_conversation(thread_id):
     state = chatbot.get_state(config={'configurable': {'thread_id': thread_id}})
     # Check if messages key exists in state values, return empty list if not
     return state.values.get('messages', [])
+
+def handle_video_submit():
+    video_url = st.session_state["video_url"]
+    if not video_url:
+        return
+
+    video_id = YTVideo_ID_generator(video_url)
+    if video_id:
+        fetch_video_transcript(video_id, str(st.session_state["thread_id"]))
+        st.session_state["video_url"] = ""   # ✅ CLEAR INPUT
+        st.success(f"Video {video_id} Loaded")
+    else:
+        st.error("Invalid YouTube URL")      
 
 
 # **************************************** Session Setup **************************************
@@ -45,7 +59,9 @@ if 'thread_id' not in st.session_state:
 
 if 'chat_threads' not in st.session_state:
     st.session_state['chat_threads'] = []
-
+    
+if "video_url" not in st.session_state:
+    st.session_state["video_url"] = ""
 
     
 add_thread(st.session_state['thread_id'])
@@ -62,31 +78,28 @@ with top_container:
 
         video_url = st.text_area(
             "Give your YT_Video_Link",
-            placeholder="Type your message here...",
-            height=120
+            placeholder="Paste YouTube video URL here...",
+            height=120,
+            key="video_url",
+            value=st.session_state["video_url"]
         )
 
-        send_clicked = st.button("Send", use_container_width=True)
+        st.button(
+            "Send",
+            use_container_width=True,
+            on_click=handle_video_submit
+        )
 
-        if send_clicked and video_url:
-            video_id = YTVideo_ID_generator(video_url)
-            if video_id:
-                fetch_video_transcript(video_id, str(st.session_state['thread_id']))
-                st.success(f"Video {video_id} Loaded")
-                
-            else:
-                st.error("Invalid YouTube URL")
-                
-        
+                       
 st.sidebar.title('VidChat Chats')
 
-if st.sidebar.button('New Chat'):
-    reset_chat()
+st.sidebar.button("New Chat", on_click=reset_chat)
 
 st.sidebar.header('My Conversations')
 
+ChatID = 1
 for thread_id in st.session_state['chat_threads']:
-    if st.sidebar.button(str(thread_id)):
+    if st.sidebar.button(f"Chat - {ChatID}"):
         st.session_state['thread_id'] = thread_id
         messages = load_conversation(thread_id)
 
@@ -98,9 +111,9 @@ for thread_id in st.session_state['chat_threads']:
             else:
                 role='assistant'
             temp_messages.append({'role': role, 'content': msg.content})
-
-        st.session_state['message_history'] = temp_messages
         
+        st.session_state['message_history'] = temp_messages
+    ChatID += 1  
 
 # loading the conversation history
 for message in st.session_state['message_history']:
@@ -138,4 +151,5 @@ if user_input:
             )
         )
         st.session_state['message_history'].append({'role': 'assistant', 'content': ai_message})
-        
+ 
+ 
