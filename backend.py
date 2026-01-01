@@ -16,6 +16,7 @@ import faiss
 from langchain_huggingface import HuggingFaceEmbeddings
 from typing import Optional
 from langchain_community.docstore.in_memory import InMemoryDocstore
+from yt_dlp import YoutubeDL
 
 
 load_dotenv()
@@ -163,3 +164,20 @@ def fetch_video_transcript(video_id: str, chat_id: str) -> str:
     
     return 
 
+
+def fetch_yt_title(video_id):
+    url = f"https://www.youtube.com/watch?v={video_id}"
+
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": True
+    }
+
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return info.get("title")
+    except Exception:
+        return None

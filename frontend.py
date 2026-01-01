@@ -6,14 +6,35 @@ from datetime import datetime
 
 from backend import chatbot
 from backend import fetch_video_transcript
+from backend import fetch_yt_title
+# **************************************** Water Marker ********************************
+st.markdown(
+    """
+    <style>
+    .watermark {
+        position: fixed;
+        bottom: 15px;
+        right: 20px;
+        opacity: 0.15;
+        font-size: 18px;
+        pointer-events: none;
+        z-index: 9999;
+    }
+    </style>
+
+    <div class="watermark">
+        VidChat • Built by Prabhav
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # **************************************** Utility Functions ********************************
 
 def YTVideo_ID_generator(video_url):
     parsed = urlparse(video_url)
     video_id = parse_qs(parsed.query).get("v", [None])[0]
-    return(video_id)
-    
+    return(video_id)  
 
 def generate_thread_id():
     thread_id = uuid.uuid4()
@@ -25,6 +46,8 @@ def reset_chat():
     add_thread(thread_id)
     st.session_state.pop("video_url", None)
     st.session_state['message_history'] = []
+    if "video_titles" in st.session_state:
+        st.session_state["video_titles"][str(thread_id)] = []
 
 def add_thread(thread_id):
     if thread_id not in st.session_state['chat_threads']:
@@ -41,13 +64,38 @@ def handle_video_submit():
         return
 
     video_id = YTVideo_ID_generator(video_url)
-    if video_id:
-        fetch_video_transcript(video_id, str(st.session_state["thread_id"]))
-        st.session_state["video_url"] = ""   # ✅ CLEAR INPUT
-        st.success(f"Video {video_id} Loaded")
-    else:
-        st.error("Invalid YouTube URL")      
+    if not video_id:
+        st.error("Invalid YouTube URL")
+        return
 
+    fetch_video_transcript(video_id, str(st.session_state["thread_id"]))
+
+    title = fetch_yt_title(video_id)
+    chat_id = str(st.session_state["thread_id"])
+
+    if title:
+        if chat_id not in st.session_state["video_titles"]:
+            st.session_state["video_titles"][chat_id] = []
+
+        if title not in st.session_state["video_titles"][chat_id]:
+            st.session_state["video_titles"][chat_id].append(title)
+
+    st.session_state.pop("video_url", None)
+    st.success("Video loaded successfully")    
+
+@st.dialog("📹 Load YouTube Video")
+def video_upload_popup():
+    st.text_area(
+        "Paste YouTube video URL",
+        placeholder="https://www.youtube.com/watch?v=...",
+        height=120,
+        key="video_url"
+    )
+
+    if st.button("Load Video", use_container_width=True):
+        handle_video_submit()
+        st.rerun()  # ✅ closes popup
+        
 
 # **************************************** Session Setup **************************************
 
@@ -63,6 +111,8 @@ if 'chat_threads' not in st.session_state:
 if "video_url" not in st.session_state:
     st.session_state["video_url"] = ""
 
+if "video_titles" not in st.session_state:
+    st.session_state["video_titles"] = {}
     
 add_thread(st.session_state['thread_id'])
 
@@ -74,22 +124,25 @@ with top_container:
     left, center, right = st.columns([1, 2, 1])
 
     with center:
-        st.subheader("🧠 Ask something")
+        st.subheader("🧠 Start conversing with your YT Videos")
 
-        video_url = st.text_area(
-            "Give your YT_Video_Link",
-            placeholder="Paste YouTube video URL here...",
-            height=120,
-            key="video_url",
-            value=st.session_state["video_url"]
-        )
+        if st.button("📹 Paste Video Link", use_container_width=True):
+            video_upload_popup()
 
-        st.button(
-            "Send",
-            use_container_width=True,
-            on_click=handle_video_submit
-        )
+    with right:
+        if st.button("📚 Context", use_container_width=True):
+            st.session_state["show_context"] = not st.session_state.get("show_context", False)
 
+        if st.session_state.get("show_context", False):
+            chat_id = str(st.session_state["thread_id"])
+            titles = st.session_state["video_titles"].get(chat_id, [])
+
+            st.markdown("##### Loaded Videos")
+            if titles:
+                for t in titles:
+                    st.caption(f"• {t}")
+            else:
+                st.caption("No videos loaded")
                        
 st.sidebar.title('VidChat Chats')
 
