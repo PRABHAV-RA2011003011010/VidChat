@@ -117,38 +117,33 @@ if "video_titles" not in st.session_state:
 add_thread(st.session_state['thread_id'])
 
 # **************************************** Frontend Code and Logic ******************************
-
-top_container = st.container()
-
-with top_container:
-    left, center, right = st.columns([1, 2, 1])
-
-    with center:
-        st.subheader("🧠 Start conversing with your YT Videos")
-
-        if st.button("📹 Paste Video Link", use_container_width=True):
-            video_upload_popup()
-
-    with right:
-        if st.button("📚 Context", use_container_width=True):
-            st.session_state["show_context"] = not st.session_state.get("show_context", False)
-
-        if st.session_state.get("show_context", False):
-            chat_id = str(st.session_state["thread_id"])
-            titles = st.session_state["video_titles"].get(chat_id, [])
-
-            st.markdown("##### Loaded Videos")
-            if titles:
-                for t in titles:
-                    st.caption(f"• {t}")
-            else:
-                st.caption("No videos loaded")
-                       
-st.sidebar.title('VidChat Chats')
+                   
+st.sidebar.title('VidChat Options')
 
 st.sidebar.button("New Chat", on_click=reset_chat)
 
+if st.sidebar.button("📹 Paste Video Link"):
+    video_upload_popup()
+
+st.sidebar.markdown("<div style='position: fixed; bottom: 20px;'>", unsafe_allow_html=True)
+if st.sidebar.button("📚 Context"):
+    st.session_state["show_context"] = not st.session_state.get("show_context", False)
+st.sidebar.markdown("</div>", unsafe_allow_html=True)
+
+# Show loaded videos if context is toggled
+if st.session_state.get("show_context", False):
+    chat_id = str(st.session_state["thread_id"])
+    titles = st.session_state["video_titles"].get(chat_id, [])
+    
+    st.sidebar.markdown("### Loaded Videos")
+    if titles:
+        for t in titles:
+            st.sidebar.caption(f"• {t}")
+    else:
+        st.sidebar.caption("No videos loaded")
+    
 st.sidebar.header('My Conversations')
+
 
 ChatID = 1
 for thread_id in st.session_state['chat_threads']:
@@ -176,8 +171,9 @@ for message in st.session_state['message_history']:
 #{'role': 'user', 'content': 'User_Input'}
 #{'role': 'assistant', 'content': 'LLM_Response'}
 
+user_input = st.chat_input("Type Your Query")
 
-user_input = st.chat_input('Type Your Query')
+
 
 if user_input:
 
