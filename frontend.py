@@ -125,10 +125,8 @@ st.sidebar.button("New Chat", on_click=reset_chat)
 if st.sidebar.button("📹 Paste Video Link"):
     video_upload_popup()
 
-st.sidebar.markdown("<div style='position: fixed; bottom: 20px;'>", unsafe_allow_html=True)
 if st.sidebar.button("📚 Context"):
     st.session_state["show_context"] = not st.session_state.get("show_context", False)
-st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
 # Show loaded videos if context is toggled
 if st.session_state.get("show_context", False):
@@ -144,24 +142,69 @@ if st.session_state.get("show_context", False):
     
 st.sidebar.header('My Conversations')
 
+st.markdown("""
+<style>
+/* Chat buttons */
+.chat-btn {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 6px;
+    border-radius: 14px;
+    border: none;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    background-color: #ffffff;
+}
+
+/* Hover */
+.chat-btn:hover {
+    background-color: #f2f2f2;
+}
+
+/* Active chat */
+.chat-btn.active {
+    background-color: #ff9800;
+    color: white;
+    font-weight: 700;
+    cursor: default;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 
 ChatID = 1
-for thread_id in st.session_state['chat_threads']:
-    if st.sidebar.button(f"Chat - {ChatID}"):
-        st.session_state['thread_id'] = thread_id
-        messages = load_conversation(thread_id)
+for thread_id in st.session_state["chat_threads"]:
+    is_current = (thread_id == st.session_state["thread_id"])
 
-        temp_messages = []
+    if is_current:
+        st.sidebar.markdown(
+            f"""
+            <button class="chat-btn active">
+                Chat - {ChatID}
+            </button>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        if st.sidebar.button(
+            f"Chat - {ChatID}",
+            key=f"chat_{thread_id}",
+            use_container_width=True
+        ):
+            st.session_state["thread_id"] = thread_id
+            messages = load_conversation(thread_id)
 
-        for msg in messages:
-            if isinstance(msg, HumanMessage):
-                role='user'
-            else:
-                role='assistant'
-            temp_messages.append({'role': role, 'content': msg.content})
-        
-        st.session_state['message_history'] = temp_messages
-    ChatID += 1  
+            temp_messages = []
+            for msg in messages:
+                role = "user" if isinstance(msg, HumanMessage) else "assistant"
+                temp_messages.append({"role": role, "content": msg.content})
+
+            st.session_state["message_history"] = temp_messages
+            st.rerun()  # ✅ IMPORTANT
+
+    ChatID += 1
 
 # loading the conversation history
 for message in st.session_state['message_history']:
