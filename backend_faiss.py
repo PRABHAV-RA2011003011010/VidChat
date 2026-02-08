@@ -11,58 +11,46 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.checkpoint.memory import MemorySaver
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+import faiss
 from langchain_huggingface import HuggingFaceEmbeddings
 from typing import Optional
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from yt_dlp import YoutubeDL
-from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance, Filter, FieldCondition, MatchValue, PointStruct
-import uuid
-from langchain_qdrant import QdrantVectorStore
+
 
 load_dotenv()
 HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
-QDRANT_URL = os.getenv("QDRANT_URL")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-
-if not all([HF_TOKEN, QDRANT_URL, QDRANT_API_KEY]):
-    raise RuntimeError("Missing required environment variables")
-
-llm_client = InferenceClient()
+client = InferenceClient()
 MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct"
 embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-qdrant_client = QdrantClient(
-    url = QDRANT_URL,
-    api_key = QDRANT_API_KEY,
-)
 
-COLLECTION_NAME = "rag_docs"
+BASE_FAISS_PATH = "faiss_store"
+os.makedirs(BASE_FAISS_PATH, exist_ok=True)
 
-if not qdrant_client.collection_exists(COLLECTION_NAME):
-    qdrant_client.create_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(
-            size=384,
-            distance=Distance.COSINE
+
+def get_vector_store(chat_id: str) -> FAISS:
+    chat_path = os.path.join(BASE_FAISS_PATH, chat_id)
+
+    if os.path.exists(chat_path):
+        return FAISS.load_local(
+            chat_path,
+            embed_model,
+            allow_dangerous_deserialization=True
         )
+
+    embedding_dim = len(embed_model.embed_query("test"))
+    index = faiss.IndexFlatL2(embedding_dim)
+    docstore = InMemoryDocstore({})
+
+    return FAISS(
+        embedding_function=embed_model,
+        index=index,
+        docstore=docstore,
+        index_to_docstore_id={}
     )
 
-qdrant_client.create_payload_index(
-    collection_name=COLLECTION_NAME,
-    field_name="chat_id",
-    field_schema="keyword"
-)
-
-def get_vector_store(chat_id: str) -> QdrantVectorStore:
-    return QdrantVectorStore(
-        client=qdrant_client,
-        collection_name=COLLECTION_NAME,
-        embedding=embed_model,
-        content_payload_key="page_content",
-        metadata_payload_key="metadata",
-    )
-    
 # Langgraph starts
 class ChatState(TypedDict):
     chat_id: str
@@ -70,21 +58,8 @@ class ChatState(TypedDict):
     context: Optional[str]
 
 def route_after_start(state: ChatState):
-    result, _ = qdrant_client.scroll(
-        collection_name=COLLECTION_NAME,
-        limit=1,
-        with_payload=False,
-        scroll_filter=Filter(
-            must=[
-                FieldCondition(
-                    key="chat_id",
-                    match=MatchValue(value=state["chat_id"])
-                )
-            ]
-        )
-    )
-
-    if len(result) > 0:
+    vector_store = get_vector_store(state["chat_id"])
+    if vector_store.index.ntotal > 0:
         return "retrieval_node"
     return "chat_node"
 
@@ -99,37 +74,30 @@ def retrieval_node(state: ChatState):
     )
 
     retriever = vector_store.as_retriever(
-        search_kwargs={
-            "k": 4,
-            "filter": Filter(
-                must=[
-                    FieldCondition(
-                        key="chat_id",
-                        match=MatchValue(value=state["chat_id"])
-                    )
-                ]
-            )
-        }
+        search_type="similarity",
+        search_kwargs={"k": 4}
     )
 
     retrieved_docs = retriever.invoke(query)
     context_text = "\n\n".join(doc.page_content for doc in retrieved_docs)
 
-    return {"context": context_text}
-  
+    return {
+        "context": context_text
+    }
+
 def chat_node(state: ChatState):
 
     messages = state["messages"]
     context = state.get("context", "")
 
     hf_messages = []
-    
+
     if context:
         hf_messages.append({
             "role": "system",
             "content": f"Use the following context to answer:\n\n{context}"
-        })    
-    
+        })
+
     for msg in messages:
         if isinstance(msg, HumanMessage):
             hf_messages.append({
@@ -143,7 +111,7 @@ def chat_node(state: ChatState):
             })
 
     # ✅ CORRECT CALL
-    completion = llm_client.chat.completions.create(
+    completion = client.chat.completions.create(
         model=MODEL_ID,
         messages=hf_messages
     )
@@ -151,10 +119,10 @@ def chat_node(state: ChatState):
     llm_response = completion.choices[0].message.content
 
     return {
-        
+
         "messages": messages + [AIMessage(content=llm_response)]
     }
-    
+
 graph = StateGraph(ChatState)
 
 graph.add_node("retrieval_node", retrieval_node)
@@ -176,47 +144,26 @@ chatbot = graph.compile(checkpointer = MemorySaver())
 
 
 
-def fetch_video_transcript(video_id: str, chat_id: str):
+def fetch_video_transcript(video_id: str, chat_id: str) -> str:
 
+    vector_store = get_vector_store(chat_id)
     ytt_api = YouTubeTranscriptApi()
     fetched_snippets = ytt_api.fetch(video_id)
 
-    transcript = " ".join(snippet.text for snippet in fetched_snippets)
-
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100
-    )
-
-    docs = splitter.create_documents([transcript])
-    texts = [doc.page_content for doc in docs]
-
-    vectors = embed_model.embed_documents(texts)
-
-    points = [
-        PointStruct(
-            id=str(uuid.uuid4()),
-            vector=vectors[i],
-    payload={
-        "chat_id": chat_id,
-        "page_content": texts[i],   # ✅ REQUIRED
-        "metadata": {
-            "source": "youtube",
-            "video_id": video_id
-        }
-    }
-        )
-        for i in range(len(texts))
-    ]
-
-    qdrant_client.upsert(
-        collection_name=COLLECTION_NAME,
-        points=points
-    )
+    transcript=[]
+    for snippet in fetched_snippets:
+        transcript.append(snippet.text)
+    transcript=" ".join(transcript)
 
 
-    
-    return 
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+    chunks = splitter.create_documents([transcript])
+
+    vector_store.add_documents(chunks)
+    save_path = os.path.join(BASE_FAISS_PATH, chat_id)
+    vector_store.save_local(save_path)
+
+    return
 
 
 def fetch_yt_title(video_id):
