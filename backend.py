@@ -50,7 +50,8 @@ def get_vector_store(chat_id: str) -> FAISS:
         docstore=docstore,
         index_to_docstore_id={}
     )
-
+    
+# Langgraph starts
 class ChatState(TypedDict):
     chat_id: str
     messages: Annotated[list[BaseMessage], add_messages]
