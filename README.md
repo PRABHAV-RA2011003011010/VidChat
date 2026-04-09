@@ -4,3 +4,11 @@ Built a Retrieval-Augmented Generation (RAG) application that processes YouTube 
 Implemented a chatbot interface to answer user queries based on video context using LLMs, improving information retrieval from long-form video content.
 Designed the pipeline including transcript ingestion, chunking strategy, embedding generation, and retrieval.
 Tech Stack: Python, LangChain, Vector DB (Chroma/OpenSearch), LLM, Embeddings
+
+Pending Implementations:
+1. Efficient Chucking
+2. Hybrid Retriver Implementation
+3. Usage of Re-ranker
+4. Query Re-writing
+5. Evaluation Metrics
+6. Deployment
